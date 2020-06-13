@@ -3,8 +3,10 @@ package src.Server;
 import java.io.*;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
-public class GroupChat extends Thread {
+public class GroupChat {
     Socket socket;
     String buff;
     public GroupChat(String buff, Socket socket){//群聊：##GROUPCHAT##群聊名字+群主用户名##name(发送方用户名)##content##font
@@ -12,9 +14,7 @@ public class GroupChat extends Thread {
         this.buff=buff;
     }
 
-    @Override
-    public void run() {
-        super.run();
+    public void act() {
         try {
             OutputStream outputStream=socket.getOutputStream();
             DataOutputStream out = new DataOutputStream(outputStream);
@@ -40,12 +40,13 @@ public class GroupChat extends Thread {
             FileOutputStream fos=new FileOutputStream(group,true);
             OutputStreamWriter osw = new OutputStreamWriter(fos, StandardCharsets.UTF_8);
             BufferedWriter bw = new BufferedWriter(osw);
+            SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
             bw.write(Server.chgl);
-            bw.write("@"+tmp[2]+"@201@" + tmp[3] + "@" + tmp[4]+ "@"+tmp[5]);//在文件中：以@群聊名字+群主用户名@201@name(发送方用户名)@content@字体存储
+            bw.write("@"+tmp[2]+"@201@" + tmp[3] + "@" + tmp[4]+ "@"+tmp[5]+"@"+df.format(new Date()));
+                //在文件中：以@群聊名字+群主用户名@201@name(发送方用户名)@content@字体@时间 存储
             bw.close();
             Server.groupLock.get(tmp[2]).writeLock().unlock();
 
-            sleep(5);
             Server.groupLock.get(tmp[2]).readLock().lock();
             FileInputStream fi=new FileInputStream(group);
             InputStreamReader isr=new InputStreamReader(fi, StandardCharsets.UTF_8);
@@ -55,8 +56,11 @@ public class GroupChat extends Thread {
             for (String i:s){
                 Socket s1=Server.online.get(i);
                 if (s1!=null){
-                    DataOutputStream out1 = new DataOutputStream(s1.getOutputStream());
-                    out1.writeUTF("@"+tmp[2]+"@201@"+tmp[3]+"@"+tmp[4]+"@"+tmp[5]);
+                    synchronized (s1){
+                        DataOutputStream out1 = new DataOutputStream(s1.getOutputStream());
+                        out1.writeUTF("@"+tmp[2]+"@201@"+tmp[3]+"@"+tmp[4]+"@"+tmp[5]+"@");
+                    }
+
                 }
             }
 

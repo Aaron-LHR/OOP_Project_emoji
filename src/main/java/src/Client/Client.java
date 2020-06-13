@@ -2,9 +2,13 @@ package src.Client;
 
 
 import java.io.*;
+import java.lang.reflect.Array;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
 import java.util.List;
 
 public class Client {
@@ -17,12 +21,13 @@ public class Client {
     private Socket socket;
     private DataOutputStream dos;
     private DataInputStream dis;
-
+    SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"); // 设置日期格式
     private static Client client;
 
     static {
         try {
-            client = new Client("localhost",1111);
+            client = new Client("39.97.126.242",1111);
+//            client = new Client("localhost",1111);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -90,15 +95,15 @@ public class Client {
         }
     }
 
-    public static void saveRecord(String localUsername, String toUsername, String content, String font, boolean direction) throws IOException { //direction==true:send   direction==false:receive
-        FileOutputStream fileOutputStream = new FileOutputStream(localUsername + "##" + toUsername + "##Record", true);
+    public static void saveRecord(String localUsername, String toUsername, String content, String font, String time, boolean direction) throws IOException { //direction==true:send   direction==false:receive
+        FileOutputStream fileOutputStream = new FileOutputStream("localRecord" + File.separator + localUsername + "##" + toUsername + "##Record", true);
         OutputStreamWriter outputStreamWriter = new OutputStreamWriter(fileOutputStream, StandardCharsets.UTF_8);
         String s;
         if (direction) {
-            s = localUsername + "@" + content + "@" + font + "\n";
+            s = localUsername + "@" + content + "@" + font + "@" + time + "@" + "\n";
         }
         else {
-            s = toUsername + "@" + content + "@" + font + "\n";
+            s = toUsername + "@" + content + "@" + font + "@" + time + "@" + "\n";
         }
         outputStreamWriter.write(s, 0, s.length());
         outputStreamWriter.flush();
@@ -106,22 +111,27 @@ public class Client {
     }
 
     public static List<String> readRecord(String localUsername, String toUsername) throws IOException {
-        FileInputStream fileInputStream = new FileInputStream(localUsername + "##" + toUsername + "##Record");
-        InputStreamReader inputStreamReader = new InputStreamReader(fileInputStream);
-        int c, i = 0;
-        char[] line = new char[1024];
-        List<String> list= new ArrayList<>();
-        while ((c = inputStreamReader.read())!=-1) {
-            if ((char) c == '\n') {
-                list.add(new String(line));
-                i = 0;
-            }
-            else {
+        try {
+            FileInputStream fileInputStream = new FileInputStream("localRecord" + File.separator + localUsername + "##" + toUsername + "##Record");
+            InputStreamReader inputStreamReader = new InputStreamReader(fileInputStream);
+            int c, i = 0;
+            char[] line = new char[1024];
+            List<String> list= new ArrayList<>();
+            while ((c = inputStreamReader.read())!=-1) {
                 line[i++] = (char) c;
+                if ((char) c == '\n') {
+                    list.add(new String(line));
+                    i = 0;
+                    line = new char[1024];
+                }
             }
+            inputStreamReader.close();
+            return list;
+        }catch (FileNotFoundException e) {
+            File file = new File("localRecord" + File.separator + localUsername + "##" + toUsername + "##Record");
+            return new ArrayList<>();
         }
-        inputStreamReader.close();
-        return list;
+
     }
 
     public void exit() throws IOException, InterruptedException {
@@ -176,7 +186,7 @@ public class Client {
                 runFlag.wait();
             }
             if (runFlag.sendPrivateMessage == 0) {
-                saveRecord(username, ToUsername, s, font, true);
+                saveRecord(username, ToUsername, s, font, df.format(new Date()), true);
                 runFlag.modify = false;
                 return true;
             }
@@ -252,7 +262,7 @@ public class Client {
     }
 
     public boolean exitGroup(String groupName) throws IOException, InterruptedException {
-        dos.writeUTF("");
+        dos.writeUTF("##QUITGROUP##" + groupName);
         synchronized (runFlag) {
             while (!runFlag.modify) {
                 runFlag.wait();
@@ -271,13 +281,44 @@ public class Client {
     }
 
     public String[] getGroupMembers(String groupName) throws IOException, InterruptedException {
-        dos.writeUTF("");
+        dos.writeUTF("##GList##" + groupName);
         synchronized (runFlag) {
             while (!runFlag.modify) {
                 runFlag.wait();
             }
             runFlag.modify = false;
             return runFlag.getGroupMember();
+        }
+    }
+
+    public boolean sendFile(String ToUsername, File file) throws IOException, InterruptedException {
+        long n = (long) Math.ceil(file.length() / 1024.0);
+        dos.writeUTF("##FILE##" + ToUsername + "##" + file.getName() + "##" + n);
+        FileInputStream fis = new FileInputStream(file);
+        byte[] bytes = new byte[1024];
+        int length = 0;
+        while ((length = fis.read(bytes, 0, bytes.length)) != -1) {
+            dos.write(bytes, 0, length);
+            System.out.println(Arrays.toString(bytes));
+            dos.flush();
+            Thread.sleep(200);
+        }
+        fis.close();
+        synchronized (runFlag) {
+            while (!runFlag.modify) {
+                runFlag.wait();
+            }
+            if (runFlag.sendFile == 0) {
+                System.out.println("发送文件成功");
+                saveRecord(username, ToUsername, "发送文件:" + file.getName(), "宋体#0#12#黑色#无色", df.format(new Date()),  true);
+                runFlag.modify = false;
+                return true;
+            }
+            else{
+                System.out.println("发送文件失败");
+                runFlag.modify = false;
+                return false;
+            }
         }
     }
 }
